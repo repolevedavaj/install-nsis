@@ -4,6 +4,10 @@ author: 'repolevedavaj'
 branding:
   icon: 'package'
   color: 'gray-dark'
+inputs:
+  nsis-version:
+    required: true
+    description: 'The version of NSIS to install'
 runs:
   using: 'node16'
   main: 'dist/index.js'
