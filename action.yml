@@ -1,0 +1,23 @@
+name: 'Install NSIS'
+description: 'Installs NSIS including the EnvVar plugin (only supported on Windows)'
+author: 'repolevedavaj'
+branding:
+  icon: 'package'
+  color: 'gray-dark'
+inputs:
+  nsis-version:
+    required: true
+    description: 'The version of NSIS to install'
+runs:
+  using: "composite"
+  steps:
+    - name: Install NSIS
+      run: |
+        Invoke-WebRequest https://nav.dl.sourceforge.net/project/nsis/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-setup.exe -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe
+        Invoke-Expression "& C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe \S"
+      shell: pwsh
+    - name: Install NSIS EnvVar plugin
+      run: |
+        Invoke-WebRequest https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
+        Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath "C:\Program Files (x86)\NSIS" -Force
+      shell: pwsh

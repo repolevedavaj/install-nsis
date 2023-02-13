@@ -1,0 +1,24 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+categories:
+  - title: 🚀 New features and improvements
+    labels:
+      - enhancement
+  - title: 🐛 Bug fixes
+    labels:
+      - bug
+  - title: 📦 Dependency updates
+    labels:
+      - dependencies
+    collapse-after: 15
+version-resolver:
+  major:
+    labels:
+      - breaking
+  minor:
+    labels:
+      - enhancement
+  default: patch
+template: |
+  <!-- Optional: add a release summary here -->
+  $CHANGES
