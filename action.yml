@@ -2,7 +2,7 @@ name: 'Install NSIS'
 description: 'Installs NSIS including the EnvVar plugin (only supported on Windows)'
 author: 'repolevedavaj'
 branding:
-  icon: 'align-left'
+  icon: 'package'
   color: 'gray-dark'
 runs:
   using: 'node16'
