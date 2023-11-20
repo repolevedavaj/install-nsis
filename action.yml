@@ -13,7 +13,7 @@ runs:
   steps:
     - name: Install NSIS
       run: |
-        Invoke-WebRequest https://nav.dl.sourceforge.net/project/nsis/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-setup.exe -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe
+        Invoke-WebRequest https://netcologne.dl.sourceforge.net/project/nsis/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-setup.exe -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe
         Invoke-Expression "& C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe \S"
       shell: pwsh
     - name: Install NSIS EnvVar plugin
