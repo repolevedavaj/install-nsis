@@ -1,7 +1,5 @@
 # Install NSIS
 
-![Build](https://github.com/repolevedavaj/install-nsis/workflows/Build/badge.svg)
-
 Installs NSIS including the EnvVar plugin (only supported on Windows).
 
 ## Inputs
@@ -15,5 +13,5 @@ The version of NSIS to install.
 ```shell
 uses: repolevedavaj/install-nsis@v1.0.1
 with:
-  nsis-version: 3.08
+  nsis-version: '3.10'
 ```
