@@ -1,0 +1,30 @@
+name: Checker
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check_for_correct_installation:
+    name: Check on windows-${{ matrix.config.os-version }}
+    runs-on: windows-${{ matrix.config.os-version }}
+    strategy:
+      matrix:
+        config:
+          - os-version: 2025
+          - os-version: 2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NSIS with EnVar plugin
+        uses: ./
+        with:
+          nsis-version: '3.11'
+        
+      - name: Check if it was correctly installed
+        shell: pwsh
+        run: | 
+          Get-Command makensis
