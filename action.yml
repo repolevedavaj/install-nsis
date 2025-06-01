@@ -14,7 +14,16 @@ runs:
     - name: Install NSIS
       run: |
         Invoke-WebRequest https://deac-riga.dl.sourceforge.net/project/nsis/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-setup.exe?viasf=1 -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe
-        Invoke-Expression "& C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe \S"
+        $process = Start-Process "C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe" -ArgumentList "/S" -Wait -PassThru
+        $exitCode = $process.ExitCode
+          if ($exitCode -eq 0) {
+              Write-Host "Installer ran successfully."
+          } else {
+              Write-Host "Installer failed with exit code $exitCode."
+              exit $exitCode
+          }
+        echo "C:\Program Files (x86)\NSIS\Bin" | Out-File -FilePath "$env:GITHUB_PATH" -Append
+        echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath "$env:GITHUB_PATH" -Append
       shell: pwsh
     - name: Install NSIS EnvVar plugin
       run: |
