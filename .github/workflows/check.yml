@@ -18,7 +18,7 @@ jobs:
           - os-version: 2025
           - os-version: 2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install NSIS with EnVar plugin
         uses: ./
         with:
