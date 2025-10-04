@@ -28,3 +28,8 @@ jobs:
         shell: pwsh
         run: | 
           Get-Command makensis
+
+      - name: Run makensis help to verify startup
+        shell: pwsh
+        run: |
+          makensis /HELP
