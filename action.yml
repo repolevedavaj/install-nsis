@@ -13,7 +13,7 @@ runs:
   steps:
     - name: Install NSIS
       run: |
-        Invoke-WebRequest -UserAgent "curl/8.20.0" https://sourceforge.net/projects/nsis/files/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}2-setup.exe/download?use_mirror=sf-west-interserver-1
+        Invoke-WebRequest -UserAgent "curl/8.20.0" https://sourceforge.net/projects/nsis/files/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-setup.exe/download?use_mirror=sf-west-interserver-1
         $process = Start-Process "C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe" -ArgumentList "/S" -Wait -PassThru
         $exitCode = $process.ExitCode
           if ($exitCode -eq 0) {
