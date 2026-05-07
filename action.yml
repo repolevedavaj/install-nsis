@@ -27,7 +27,7 @@ runs:
       shell: pwsh
     - name: Apply NSIS long string patch
       run: |
-        Invoke-WebRequest https://deac-riga.dl.sourceforge.net/project/nsis/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-strlen_8192.zip?viasf=1 -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-strlen_8192.zip
+        Invoke-WebRequest -UserAgent "curl/8.20.0" "https://sourceforge.net/projects/nsis/files/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-strlen_8192.zip/download?" -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-strlen_8192.zip
         Expand-Archive "C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-strlen_8192.zip" -DestinationPath "C:\Program Files (x86)\NSIS" -Force
       shell: pwsh
     - name: Install NSIS EnvVar plugin
