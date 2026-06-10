@@ -32,6 +32,6 @@ runs:
       shell: pwsh
     - name: Install NSIS EnvVar plugin
       run: |
-        Invoke-WebRequest https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
+        Invoke-WebRequest -UserAgent "curl/8.20.0" "https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip?" -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
         Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath "C:\Program Files (x86)\NSIS" -Force
       shell: pwsh
