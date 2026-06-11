@@ -11,7 +11,7 @@ The version of NSIS to install.
 ## Example usage
 
 ```shell
-uses: repolevedavaj/install-nsis@v1.0.1
+uses: repolevedavaj/install-nsis@v1.2.1
 with:
-  nsis-version: '3.10'
+  nsis-version: '3.12'
 ```
