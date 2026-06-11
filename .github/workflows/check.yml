@@ -22,7 +22,7 @@ jobs:
       - name: Install NSIS with EnVar plugin
         uses: ./
         with:
-          nsis-version: '3.11'
+          nsis-version: '3.12'
         
       - name: Check if it was correctly installed
         shell: pwsh
