@@ -34,9 +34,9 @@ with:
 
 ## Versioning
 
-`v1` always points at the latest `v1.x.y` release. Every minor line also gets a floating
-tag, so `v1.3` points at the latest `v1.3.x` release. Use one of these to receive fixes
-without editing your workflow.
+`v1` always points at the latest `v1.x.y` release. Each release also updates a tag for
+its own minor line, so `v1.3` points at the latest `v1.3.x` release. Use one of these to
+receive fixes without editing your workflow.
 
 Pin a full version such as `@v1.3.0`, or a commit SHA, if you need the action to stay
 exactly as it is today.
