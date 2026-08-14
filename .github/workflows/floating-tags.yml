@@ -1,0 +1,68 @@
+name: Floating-Tags
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release tag the floating tags should point at, for example v1.2.1'
+        required: true
+
+jobs:
+  update_floating_tags:
+    name: Update the major and major.minor tags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Move the floating tags to the release commit
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "$RELEASE_TAG is not a vMAJOR.MINOR.PATCH tag. Nothing to do."
+            exit 0
+          fi
+          major="v${BASH_REMATCH[1]}"
+          minor="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+
+          commit=$(git rev-list --max-count=1 "$RELEASE_TAG")
+          echo "$RELEASE_TAG points at $commit."
+
+          # A tag can be created on any commit, including one that was never merged.
+          git fetch --no-tags --quiet origin main
+          if ! git merge-base --is-ancestor "$commit" FETCH_HEAD; then
+            echo "$commit is not on main. Refusing to move a floating tag to it."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # A floating tag follows the highest release on main, so publishing a fix on an
+          # older line does not drag it backwards. --merged skips tags that never landed,
+          # which would otherwise freeze the floating tag for good.
+          move_tag() {
+            local tag="$1" releases="$2" highest
+            highest=$(git tag --list "$releases" --merged FETCH_HEAD --sort=-v:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1) || true
+            if [[ "$highest" != "$RELEASE_TAG" ]]; then
+              echo "Leaving $tag where it is, because $highest is newer than $RELEASE_TAG."
+              return
+            fi
+
+            git tag --force --annotate "$tag" \
+              --message "Latest $tag release ($RELEASE_TAG)" "$commit"
+            git push --force origin "refs/tags/$tag"
+            echo "$tag now points at $commit."
+          }
+
+          move_tag "$major" "$major.*"
+          move_tag "$minor" "$minor.*"
