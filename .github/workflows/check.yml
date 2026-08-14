@@ -33,10 +33,18 @@ jobs:
         run: |
           Get-Command makensis
 
-      - name: Run makensis help to verify startup
+      - name: Check that the long string patch took effect
         shell: pwsh
         run: |
-          makensis /HELP
+          $ErrorActionPreference = 'Stop'
+
+          # /HDRINFO reports the values makensis was compiled with. Without the patch
+          # NSIS_MAX_STRLEN is 1024, so this also proves makensis starts.
+          $info = (makensis /HDRINFO) -join "`n"
+          Write-Host $info
+          if ($info -notmatch 'NSIS_MAX_STRLEN\W*8192') {
+              throw "makensis does not report NSIS_MAX_STRLEN 8192, so the long string patch is missing."
+          }
 
       - name: Check that the EnVar plugin is installed and usable
         shell: pwsh
