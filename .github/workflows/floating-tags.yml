@@ -2,20 +2,19 @@ name: Floating-Tags
 
 on:
   release:
-    types: [published]
+    types: [released]
   workflow_dispatch:
     inputs:
       tag:
         description: 'The release tag the floating tags should point at, for example v1.2.1'
         required: true
 
-permissions:
-  contents: write
-
 jobs:
   update_floating_tags:
     name: Update the major and major.minor tags
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,12 +36,35 @@ jobs:
           commit=$(git rev-list --max-count=1 "$RELEASE_TAG")
           echo "$RELEASE_TAG points at $commit."
 
+          # A floating tag must only ever point at released code. A tag can be created
+          # on any commit in the repository, including one that was never merged.
+          git fetch --no-tags --quiet origin main
+          if ! git merge-base --is-ancestor "$commit" FETCH_HEAD; then
+            echo "$commit is not on main. Refusing to move a floating tag to it."
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          for tag in "$major" "$minor"; do
+          # A floating tag points at the highest release on main. Comparing versions
+          # keeps a fix published on an older line from dragging the tag backwards,
+          # and --merged ignores tags that never reached main, which would otherwise
+          # freeze the floating tag for good.
+          move_tag() {
+            local tag="$1" releases="$2" highest
+            highest=$(git tag --list "$releases" --merged FETCH_HEAD --sort=-v:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1) || true
+            if [[ "$highest" != "$RELEASE_TAG" ]]; then
+              echo "Leaving $tag where it is, because $highest is newer than $RELEASE_TAG."
+              return
+            fi
+
             git tag --force --annotate "$tag" \
               --message "Latest $tag release ($RELEASE_TAG)" "$commit"
             git push --force origin "refs/tags/$tag"
             echo "$tag now points at $commit."
-          done
+          }
+
+          move_tag "$major" "$major.*"
+          move_tag "$minor" "$minor.*"

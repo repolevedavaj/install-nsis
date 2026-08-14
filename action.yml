@@ -1,5 +1,5 @@
 name: 'Install NSIS'
-description: 'Installs NSIS including the EnvVar plugin (only supported on Windows)'
+description: 'Installs NSIS including the long string build and the EnVar plugin (only supported on Windows)'
 author: 'repolevedavaj'
 branding:
   icon: 'package'
@@ -20,7 +20,7 @@ runs:
         $ProgressPreference = 'SilentlyContinue'
 
         $version = $env:NSIS_VERSION
-        if ($version -notmatch '^[0-9][0-9A-Za-z.\-]*$') {
+        if ($version -notmatch '^[0-9][0-9A-Za-z.\-]*\z') {
             throw "'$version' is not a valid NSIS version."
         }
 
@@ -38,7 +38,9 @@ runs:
             $attempts = 5
             for ($attempt = 1; $attempt -le $attempts; $attempt++) {
                 try {
-                    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UserAgent $userAgent
+                    # Without a timeout a stalled mirror holds the job for hours
+                    # instead of failing over to the next attempt.
+                    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UserAgent $userAgent -TimeoutSec 300
                     return
                 }
                 catch {
