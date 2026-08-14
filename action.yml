@@ -11,27 +11,143 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Download and verify the NSIS files
+      env:
+        NSIS_VERSION: ${{ inputs.nsis-version }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # The progress bar makes Invoke-WebRequest several times slower on a runner.
+        $ProgressPreference = 'SilentlyContinue'
+
+        $version = $env:NSIS_VERSION
+        if ($version -notmatch '^[0-9][0-9A-Za-z.\-]*$') {
+            throw "'$version' is not a valid NSIS version."
+        }
+
+        # SourceForge serves an HTML interstitial page to anything that looks like a
+        # browser, and the default PowerShell user agent starts with 'Mozilla/'.
+        # Any user agent that does not look like a browser receives the file itself.
+        $userAgent = 'install-nsis-action (+https://github.com/repolevedavaj/install-nsis)'
+        $downloads = (New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'install-nsis')).FullName
+
+        # Invoke-WebRequest only retries certain HTTP status codes. A mirror that drops
+        # the connection is the failure we see most, so we retry on any error.
+        function Invoke-Download {
+            param([string] $Uri, [string] $OutFile)
+
+            $attempts = 5
+            for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+                try {
+                    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UserAgent $userAgent
+                    return
+                }
+                catch {
+                    # A client error will not go away by asking again, and its response
+                    # body is a full web page that would flood the log.
+                    $status = [int] $_.Exception.Response.StatusCode
+                    if ($status -ge 400 -and $status -lt 500 -and $status -notin 408, 429) {
+                        throw "$Uri returned HTTP $status."
+                    }
+                    if ($attempt -eq $attempts) { throw }
+                    $wait = 5 * $attempt
+                    Write-Host "Attempt $attempt of $attempts for $Uri failed: $($_.Exception.Message). Retrying in $wait seconds."
+                    Start-Sleep -Seconds $wait
+                }
+            }
+        }
+
+        # SourceForge publishes an MD5 and a byte size for every file in a release
+        # folder. We read them from sourceforge.net over TLS and check them against the
+        # bytes a mirror gave us, which is what catches a bad mirror or a truncated file.
+        $folder = "/NSIS $($version.Split('.')[0])/$version"
+        $feedUrl = "https://sourceforge.net/projects/nsis/rss?path=$folder"
+        $feedFile = Join-Path $downloads 'files.rss'
+        try {
+            Invoke-Download -Uri $feedUrl -OutFile $feedFile
+            $feed = [xml](Get-Content -Path $feedFile -Raw)
+        }
+        catch {
+            throw "Could not read the SourceForge file list at $feedUrl. Is '$version' a published NSIS version? $($_.Exception.Message)"
+        }
+        $namespaces = New-Object System.Xml.XmlNamespaceManager($feed.NameTable)
+        $namespaces.AddNamespace('media', 'http://video.search.yahoo.com/mrss/')
+
+        function Get-SourceForgeFile {
+            param([string] $Name)
+
+            $item = $feed.SelectSingleNode("//item[title='$folder/$Name']")
+            if (-not $item) {
+                throw "SourceForge has no file $folder/$Name. Is '$version' a published NSIS version?"
+            }
+            $metadata = $item.SelectSingleNode('media:content', $namespaces)
+
+            $outFile = Join-Path $downloads $Name
+            Invoke-Download -Uri $metadata.GetAttribute('url') -OutFile $outFile
+
+            $expectedSize = [long] $metadata.GetAttribute('filesize')
+            $actualSize = (Get-Item -Path $outFile).Length
+            if ($actualSize -ne $expectedSize) {
+                throw "$Name is $actualSize bytes, SourceForge reports $expectedSize bytes."
+            }
+
+            $expectedHashNode = $metadata.SelectSingleNode("media:hash[@algo='md5']", $namespaces)
+            if (-not $expectedHashNode) {
+                throw "SourceForge publishes no MD5 for $Name, so it cannot be verified."
+            }
+            $expectedHash = $expectedHashNode.InnerText.ToLower()
+            $actualHash = (Get-FileHash -Path $outFile -Algorithm MD5).Hash.ToLower()
+            if ($actualHash -ne $expectedHash) {
+                throw "$Name has MD5 $actualHash, SourceForge reports $expectedHash."
+            }
+
+            Write-Host "Verified $Name ($actualSize bytes)."
+        }
+
+        Get-SourceForgeFile -Name "nsis-$version-setup.exe"
+        Get-SourceForgeFile -Name "nsis-$version-strlen_8192.zip"
+
+        # The EnVar plugin comes from its upstream release rather than from the NSIS
+        # wiki. The wiki host sits behind a bot challenge that has blocked this action
+        # before. The release is pinned, so we pin its hash as well.
+        $envarUrl = 'https://github.com/GsNSIS/EnVar/releases/download/v0.3.1/EnVar-Plugin.zip'
+        $envarExpectedHash = 'e5b337fcad68252d18282f7259a0306053626e41b9480fa09df3fab012b85e00'
+        $envarFile = Join-Path $downloads 'EnVar-Plugin.zip'
+        Invoke-Download -Uri $envarUrl -OutFile $envarFile
+
+        $envarActualHash = (Get-FileHash -Path $envarFile -Algorithm SHA256).Hash.ToLower()
+        if ($envarActualHash -ne $envarExpectedHash) {
+            throw "EnVar-Plugin.zip has SHA-256 $envarActualHash, expected $envarExpectedHash."
+        }
+        Write-Host "Verified EnVar-Plugin.zip."
+      shell: pwsh
     - name: Install NSIS
+      env:
+        NSIS_VERSION: ${{ inputs.nsis-version }}
       run: |
-        Invoke-WebRequest -UserAgent "curl/8.20.0" "https://sourceforge.net/projects/nsis/files/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-setup.exe/download?" -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe
-        $process = Start-Process "C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-setup.exe" -ArgumentList "/S" -Wait -PassThru
-        $exitCode = $process.ExitCode
-          if ($exitCode -eq 0) {
-              Write-Host "Installer ran successfully."
-          } else {
-              Write-Host "Installer failed with exit code $exitCode."
-              exit $exitCode
-          }
-        echo "C:\Program Files (x86)\NSIS\Bin" | Out-File -FilePath "$env:GITHUB_PATH" -Append
-        echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath "$env:GITHUB_PATH" -Append
+        $ErrorActionPreference = 'Stop'
+
+        $setup = Join-Path $env:RUNNER_TEMP "install-nsis\nsis-$($env:NSIS_VERSION)-setup.exe"
+        $process = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "The NSIS installer failed with exit code $($process.ExitCode)."
+        }
+
+        "C:\Program Files (x86)\NSIS\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+        "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
       shell: pwsh
-    - name: Apply NSIS long string patch
+    - name: Apply the NSIS long string patch
+      env:
+        NSIS_VERSION: ${{ inputs.nsis-version }}
       run: |
-        Invoke-WebRequest -UserAgent "curl/8.20.0" "https://sourceforge.net/projects/nsis/files/NSIS%203/${{ inputs.nsis-version }}/nsis-${{ inputs.nsis-version }}-strlen_8192.zip/download?" -OutFile C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-strlen_8192.zip
-        Expand-Archive "C:\WINDOWS\Temp\nsis-${{ inputs.nsis-version }}-strlen_8192.zip" -DestinationPath "C:\Program Files (x86)\NSIS" -Force
+        $ErrorActionPreference = 'Stop'
+
+        $patch = Join-Path $env:RUNNER_TEMP "install-nsis\nsis-$($env:NSIS_VERSION)-strlen_8192.zip"
+        Expand-Archive -Path $patch -DestinationPath "C:\Program Files (x86)\NSIS" -Force
       shell: pwsh
-    - name: Install NSIS EnvVar plugin
+    - name: Install the NSIS EnVar plugin
       run: |
-        Invoke-WebRequest -UserAgent "curl/8.20.0" "https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip?" -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
-        Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath "C:\Program Files (x86)\NSIS" -Force
+        $ErrorActionPreference = 'Stop'
+
+        $plugin = Join-Path $env:RUNNER_TEMP 'install-nsis\EnVar-Plugin.zip'
+        Expand-Archive -Path $plugin -DestinationPath "C:\Program Files (x86)\NSIS" -Force
       shell: pwsh
