@@ -10,26 +10,51 @@ on:
 
 jobs:
   check_for_correct_installation:
-    name: Check on windows-${{ matrix.config.os-version }}
-    runs-on: windows-${{ matrix.config.os-version }}
+    name: Check NSIS ${{ matrix.nsis-version }} on windows-${{ matrix.os-version }}
+    runs-on: windows-${{ matrix.os-version }}
     strategy:
+      fail-fast: false
       matrix:
-        config:
-          - os-version: 2025
-          - os-version: 2022
+        os-version: [2025, 2022]
+        nsis-version: ['3.12', '3.10']
     steps:
       - uses: actions/checkout@v6
+
       - name: Install NSIS with EnVar plugin
         uses: ./
         with:
-          nsis-version: '3.12'
-        
+          nsis-version: ${{ matrix.nsis-version }}
+
       - name: Check if it was correctly installed
         shell: pwsh
-        run: | 
+        run: |
           Get-Command makensis
 
       - name: Run makensis help to verify startup
         shell: pwsh
         run: |
           makensis /HELP
+
+      - name: Check that the EnVar plugin is installed and usable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          foreach ($platform in 'x86-ansi', 'x86-unicode', 'amd64-unicode') {
+              $dll = "C:\Program Files (x86)\NSIS\Plugins\$platform\EnVar.dll"
+              if (-not (Test-Path -Path $dll)) {
+                  throw "The EnVar plugin is missing for $platform."
+              }
+          }
+
+          # Compiling the example that ships with the plugin proves that makensis can
+          # resolve the EnVar calls, not only that the files were copied.
+          $example = "C:\Program Files (x86)\NSIS\Examples\EnVar\example.nsi"
+          if (-not (Test-Path -Path $example)) {
+              throw "The EnVar example script is missing."
+          }
+          Copy-Item -Path $example -Destination $env:RUNNER_TEMP
+          makensis (Join-Path $env:RUNNER_TEMP 'example.nsi')
+          if ($LASTEXITCODE -ne 0) {
+              throw "Compiling the EnVar example failed with exit code $LASTEXITCODE."
+          }
