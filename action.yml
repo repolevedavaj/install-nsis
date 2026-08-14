@@ -16,7 +16,7 @@ runs:
         NSIS_VERSION: ${{ inputs.nsis-version }}
       run: |
         $ErrorActionPreference = 'Stop'
-        # The progress bar makes Invoke-WebRequest several times slower on a runner.
+        # The progress bar makes downloads several times slower on a runner.
         $ProgressPreference = 'SilentlyContinue'
 
         $version = $env:NSIS_VERSION
@@ -24,43 +24,33 @@ runs:
             throw "'$version' is not a valid NSIS version."
         }
 
-        # SourceForge serves an HTML interstitial page to anything that looks like a
-        # browser, and the default PowerShell user agent starts with 'Mozilla/'.
-        # Any user agent that does not look like a browser receives the file itself.
+        # SourceForge sends an HTML page instead of the file to anything whose user
+        # agent looks like a browser. Never put Mozilla in here.
         $userAgent = 'install-nsis-action (+https://github.com/repolevedavaj/install-nsis)'
         $downloads = (New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'install-nsis')).FullName
 
-        # Invoke-WebRequest only retries certain HTTP status codes. A mirror that drops
-        # the connection is the failure we see most, so we retry on any error.
         function Invoke-Download {
             param([string] $Uri, [string] $OutFile)
 
-            $attempts = 5
-            for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
                 try {
-                    # Without a timeout a stalled mirror holds the job for hours
-                    # instead of failing over to the next attempt.
                     Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UserAgent $userAgent -TimeoutSec 300
                     return
                 }
                 catch {
-                    # A client error will not go away by asking again, and its response
-                    # body is a full web page that would flood the log.
+                    # Asking again only repeats a client error, and logs a web page each time.
                     $status = [int] $_.Exception.Response.StatusCode
                     if ($status -ge 400 -and $status -lt 500 -and $status -notin 408, 429) {
                         throw "$Uri returned HTTP $status."
                     }
-                    if ($attempt -eq $attempts) { throw }
-                    $wait = 5 * $attempt
-                    Write-Host "Attempt $attempt of $attempts for $Uri failed: $($_.Exception.Message). Retrying in $wait seconds."
-                    Start-Sleep -Seconds $wait
+                    if ($attempt -eq 5) { throw }
+                    Write-Host "$Uri failed: $($_.Exception.Message). Retrying."
+                    Start-Sleep -Seconds (5 * $attempt)
                 }
             }
         }
 
-        # SourceForge publishes an MD5 and a byte size for every file in a release
-        # folder. We read them from sourceforge.net over TLS and check them against the
-        # bytes a mirror gave us, which is what catches a bad mirror or a truncated file.
+        # The bytes come from a mirror. The size and MD5 to expect come from sourceforge.net.
         $folder = "/NSIS $($version.Split('.')[0])/$version"
         $feedUrl = "https://sourceforge.net/projects/nsis/rss?path=$folder"
         $feedFile = Join-Path $downloads 'files.rss'
@@ -69,7 +59,7 @@ runs:
             $feed = [xml](Get-Content -Path $feedFile -Raw)
         }
         catch {
-            throw "Could not read the SourceForge file list at $feedUrl. Is '$version' a published NSIS version? $($_.Exception.Message)"
+            throw "Cannot read the file list for NSIS $version. Is it a published version? $($_.Exception.Message)"
         }
         $namespaces = New-Object System.Xml.XmlNamespaceManager($feed.NameTable)
         $namespaces.AddNamespace('media', 'http://video.search.yahoo.com/mrss/')
@@ -79,46 +69,42 @@ runs:
 
             $item = $feed.SelectSingleNode("//item[title='$folder/$Name']")
             if (-not $item) {
-                throw "SourceForge has no file $folder/$Name. Is '$version' a published NSIS version?"
+                throw "SourceForge does not list $folder/$Name."
             }
             $metadata = $item.SelectSingleNode('media:content', $namespaces)
+            $expectedHash = $metadata.SelectSingleNode("media:hash[@algo='md5']", $namespaces)
+            if (-not $expectedHash) {
+                throw "SourceForge publishes no MD5 for $Name."
+            }
+            $expectedSize = [long] $metadata.GetAttribute('filesize')
 
             $outFile = Join-Path $downloads $Name
             Invoke-Download -Uri $metadata.GetAttribute('url') -OutFile $outFile
 
-            $expectedSize = [long] $metadata.GetAttribute('filesize')
-            $actualSize = (Get-Item -Path $outFile).Length
-            if ($actualSize -ne $expectedSize) {
-                throw "$Name is $actualSize bytes, SourceForge reports $expectedSize bytes."
+            $size = (Get-Item -Path $outFile).Length
+            if ($size -ne $expectedSize) {
+                throw "$Name is $size bytes, SourceForge reports $expectedSize."
             }
-
-            $expectedHashNode = $metadata.SelectSingleNode("media:hash[@algo='md5']", $namespaces)
-            if (-not $expectedHashNode) {
-                throw "SourceForge publishes no MD5 for $Name, so it cannot be verified."
+            $hash = (Get-FileHash -Path $outFile -Algorithm MD5).Hash.ToLower()
+            if ($hash -ne $expectedHash.InnerText.ToLower()) {
+                throw "$Name has MD5 $hash, SourceForge reports $($expectedHash.InnerText)."
             }
-            $expectedHash = $expectedHashNode.InnerText.ToLower()
-            $actualHash = (Get-FileHash -Path $outFile -Algorithm MD5).Hash.ToLower()
-            if ($actualHash -ne $expectedHash) {
-                throw "$Name has MD5 $actualHash, SourceForge reports $expectedHash."
-            }
-
-            Write-Host "Verified $Name ($actualSize bytes)."
+            Write-Host "Verified $Name ($size bytes)."
         }
 
         Get-SourceForgeFile -Name "nsis-$version-setup.exe"
         Get-SourceForgeFile -Name "nsis-$version-strlen_8192.zip"
 
-        # The EnVar plugin comes from its upstream release rather than from the NSIS
-        # wiki. The wiki host sits behind a bot challenge that has blocked this action
-        # before. The release is pinned, so we pin its hash as well.
-        $envarUrl = 'https://github.com/GsNSIS/EnVar/releases/download/v0.3.1/EnVar-Plugin.zip'
-        $envarExpectedHash = 'e5b337fcad68252d18282f7259a0306053626e41b9480fa09df3fab012b85e00'
+        # Not from the NSIS wiki: that host sits behind a bot challenge that has blocked
+        # this action before, and it publishes no hash.
+        $envarHash = 'e5b337fcad68252d18282f7259a0306053626e41b9480fa09df3fab012b85e00'
         $envarFile = Join-Path $downloads 'EnVar-Plugin.zip'
-        Invoke-Download -Uri $envarUrl -OutFile $envarFile
+        Invoke-Download -OutFile $envarFile `
+            -Uri 'https://github.com/GsNSIS/EnVar/releases/download/v0.3.1/EnVar-Plugin.zip'
 
-        $envarActualHash = (Get-FileHash -Path $envarFile -Algorithm SHA256).Hash.ToLower()
-        if ($envarActualHash -ne $envarExpectedHash) {
-            throw "EnVar-Plugin.zip has SHA-256 $envarActualHash, expected $envarExpectedHash."
+        $hash = (Get-FileHash -Path $envarFile -Algorithm SHA256).Hash.ToLower()
+        if ($hash -ne $envarHash) {
+            throw "EnVar-Plugin.zip has SHA-256 $hash, expected $envarHash."
         }
         Write-Host "Verified EnVar-Plugin.zip."
       shell: pwsh
