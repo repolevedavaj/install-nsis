@@ -8,10 +8,23 @@ inputs:
   nsis-version:
     required: true
     description: 'The version of NSIS to install'
+  use-cache:
+    required: false
+    type: boolean
+    default: false
+    description: 'Use GitHub Actions cache for downloaded NSIS files'
 runs:
   using: "composite"
   steps:
+    - name: Restore NSIS cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      id: restore-nsis-installer
+      if: inputs.use-cache
+      with:
+        path: '${{ runner.temp }}\install-nsis-${{ inputs.nsis-version }}'
+        key: 'nsis-installer-${{ inputs.nsis-version }}-cache'
     - name: Download and verify the NSIS files
+      if: steps.restore-nsis-installer.outputs.cache-hit != 'true'
       env:
         NSIS_VERSION: ${{ inputs.nsis-version }}
       run: |
@@ -27,7 +40,7 @@ runs:
         # SourceForge sends an HTML page instead of the file to anything whose user
         # agent looks like a browser. Never put Mozilla in here.
         $userAgent = 'install-nsis-action (+https://github.com/repolevedavaj/install-nsis)'
-        $downloads = (New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'install-nsis')).FullName
+        $downloads = (New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP "install-nsis-$env:NSIS_VERSION")).FullName
 
         function Invoke-Download {
             param([string] $Uri, [string] $OutFile)
@@ -114,7 +127,7 @@ runs:
       run: |
         $ErrorActionPreference = 'Stop'
 
-        $setup = Join-Path $env:RUNNER_TEMP "install-nsis\nsis-$($env:NSIS_VERSION)-setup.exe"
+        $setup = Join-Path $env:RUNNER_TEMP "install-nsis-$env:NSIS_VERSION\nsis-$($env:NSIS_VERSION)-setup.exe"
         $process = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
         if ($process.ExitCode -ne 0) {
             throw "The NSIS installer failed with exit code $($process.ExitCode)."
@@ -129,13 +142,15 @@ runs:
       run: |
         $ErrorActionPreference = 'Stop'
 
-        $patch = Join-Path $env:RUNNER_TEMP "install-nsis\nsis-$($env:NSIS_VERSION)-strlen_8192.zip"
+        $patch = Join-Path $env:RUNNER_TEMP "install-nsis-$env:NSIS_VERSION\nsis-$($env:NSIS_VERSION)-strlen_8192.zip"
         Expand-Archive -Path $patch -DestinationPath "C:\Program Files (x86)\NSIS" -Force
       shell: pwsh
     - name: Install the NSIS EnVar plugin
+      env:
+        NSIS_VERSION: ${{ inputs.nsis-version }}
       run: |
         $ErrorActionPreference = 'Stop'
 
-        $plugin = Join-Path $env:RUNNER_TEMP 'install-nsis\EnVar-Plugin.zip'
+        $plugin = Join-Path $env:RUNNER_TEMP "install-nsis-$env:NSIS_VERSION\EnVar-Plugin.zip"
         Expand-Archive -Path $plugin -DestinationPath "C:\Program Files (x86)\NSIS" -Force
       shell: pwsh

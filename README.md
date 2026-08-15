@@ -19,6 +19,10 @@ Required. The version of NSIS to install, for example `'3.12'`.
 
 Quote the value. Without quotes, YAML reads `3.10` as the number `3.1`.
 
+### `use-cache`
+
+Optional. Defaults to `false`. Specifies whether to use the GitHub Actions cache for downloaded NSIS files.
+
 ## Example usage
 
 ```yaml

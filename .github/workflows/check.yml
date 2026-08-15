@@ -20,6 +20,7 @@ jobs:
       matrix:
         os-version: [2025, 2022]
         nsis-version: ['3.12', '3.10']
+        use-cache: [true, false]
     steps:
       - uses: actions/checkout@v7
 
@@ -27,6 +28,7 @@ jobs:
         uses: ./
         with:
           nsis-version: ${{ matrix.nsis-version }}
+          use-cache: ${{ matrix.use-cache }}
 
       - name: Check if it was correctly installed
         shell: pwsh
